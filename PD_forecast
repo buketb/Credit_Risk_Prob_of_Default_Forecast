@@ -1,0 +1,258 @@
+
+
+install.packages("gmodels")
+install.packages("rpart")
+install.packages("rpart.plot")
+install.packages("pROC")
+install.packages("stats")
+
+library(gmodels)
+library(rpart)
+library(rpart.plot)
+library(pROC)
+library(stats)
+data(loan_data)
+
+str(loan_data)
+# Credit data exploration 
+# Cross Tables for categorical variables -> number of cases and proportions
+CrossTable(loan_data$loan_status)
+CrossTable(loan_data$grade, loan_data$loan_status,prob.r=T, prob.c=F, prob.chisq=F, prob.t=F)
+# loan_status, 1 is default
+# loan_amnt : loan maount
+# int_rate : interest rate
+# grade : 
+# emp_length : employment length
+# home_ownership
+# annual_inc
+# age
+
+# Check data for outliers
+summary(loan_data)
+hist(loan_data$emp_length)
+
+
+#Outliers
+#1.Expert judgement
+
+index_outlier_expert <- which(loan_data_inc > 3000000)
+#remove outliers
+loan_data_expert <- loan_data[-index_outlier_expert, ]
+
+# 2.Rule of Thumb
+# Outlier if bigger than Q3 + 1.5*IQR
+#IQR = Inter-quantile ranges
+
+# Calculate Q3 + 1.5*IQR
+outlier_cutoff <- quantile(loan_data$annual_inc, 0.75) + 1.5* IQR(loan_data$annual_inc)
+# Identify outliers
+index_outliers_ROT <- which(loan_data$annual_inc > outlier_cutoff)
+#Remove outliers
+loan_data_ROT <- loan_data[-index_outliers_ROT, ]
+
+#Histograms:
+hist(loan_data_expert$annual_inc, sqrt(nrow(loan_data_expert)), xlab= "Annual income")
+
+hist(loan_data_ROT$annual_inc, sqrt(nrow(loan_data_ROT)), xlab = "Annual income")
+
+# Bivariate plot
+plot(loan_data$emp_length, loan_data$annual_inc, xlab = "Employment length", ylab= "Annual Income")
+
+# Plot the age variable
+plot(loan_data$age, ylab = "Age")
+
+# Save the outlier's index to index_highage
+index_highage <- which(loan_data$age > 100)
+
+# Create data set new_data with outlier deleted
+new_data <- loan_data[-index_highage, ]
+
+# Make bivariate scatterplot of age and annual income
+plot(loan_data$age, loan_data$annual_inc, xlab = "Age", ylab = "Annual Income")
+
+#Missing the data
+index_NA <- which(is.na(loan_data$emp_length))
+loan_data_no_NA <- loan_data[-c(index_NA), ]
+
+#delete column
+loan_data_delete_employ <- loan_data
+loan_data_delete_employ$emp_length <- NULL
+
+# replace with median
+index_NA <- which(is.na(loan_data$emp_length))
+loan_data_replace <- loan_data
+loan_data_replace$emp_length[index_NA] <- median(loan_data$emp_length, na.rm = T)
+
+#Keep NAs:
+#coarse classification, put variable in "bins"
+#to keep the information in the dataset
+# new variable emp_cat
+#Range_ 0-62 years make bins of +/-15 years
+# categories: "0-15", "15-30". "30-45", "45+", "missing"
+
+
+# Look at summary of loan_data
+summary(loan_data$int_rate)
+
+# Get indices of missing interest rates: na_index
+na_index <- which(is.na(loan_data$int_rate))
+
+# Remove observations with missing interest rates: loan_data_delrow_na
+loan_data_delrow_na <- loan_data[-na_index, ]
+
+# Make copy of loan_data
+loan_data_delcol_na <- loan_data
+
+# Delete interest rate column from loan_data_delcol_na
+loan_data_delcol_na$int_rate <- NULL
+
+# Compute the median of int_rate
+median_ir <- median(loan_data$int_rate, na.rm = T)
+
+# Make copy of loan_data
+loan_data_replace <- loan_data
+
+# Replace missing interest rates with median
+index_NA <- which(is.na(loan_data$int_rate))
+loan_data_replace$int_rate[index_NA] <- median_ir
+
+# Check if the NAs are gone
+summary(loan_data_replace$int_rate)
+
+loan_data$emp_cat <- rep(NA, length(loan_data$emp_length))
+
+loan_data$emp_cat[which(loan_data$emp_length <= 15)] <- "0-15"
+loan_data$emp_cat[which(loan_data$emp_length > 15 & loan_data$emp_length <= 30)] <- "15-30"
+loan_data$emp_cat[which(loan_data$emp_length > 30 & loan_data$emp_length <= 45)] <- "30-45"
+loan_data$emp_cat[which(loan_data$emp_length > 45)] <- "45+"
+loan_data$emp_cat[which(is.na(loan_data$emp_length))] <- "Missing"
+
+loan_data$emp_cat <- as.factor(loan_data$emp_cat)
+
+
+loan_data$ir_cat <- rep(NA, length(loan_data$int_rate))
+
+loan_data$ir_cat[which(loan_data$int_rate <= 8)] <- "0-8"
+loan_data$ir_cat[which(loan_data$int_rate > 8 & loan_data$int_rate <= 11)] <- "8-11"
+loan_data$ir_cat[which(loan_data$int_rate > 11 & loan_data$int_rate <= 13.5)] <- "11-13.5"
+loan_data$ir_cat[which(loan_data$int_rate > 13.5)] <- "13.5+"
+loan_data$ir_cat[which(is.na(loan_data$int_rate))] <- "Missing"
+
+loan_data$ir_cat <- as.factor(loan_data$ir_cat)
+
+# Look at your new variable using plot()
+
+plot(loan_data$ir_cat)
+
+
+# data splitting and confusion matrix
+# split the data in training and test groups as 2/3 & 1/3
+
+# some measures:
+#accuracy
+#sensititvity
+#specifity
+
+
+# Set seed of 567
+set.seed(567)
+
+# Store row numbers for training set: index_train
+index_train <- sample(1:nrow(loan_data), 2 / 3 * nrow(loan_data))
+
+# Create training set: training_set
+training_set <- loan_data[index_train, ]
+
+# Create test set: test_set
+test_set <- loan_data[-index_train, ]
+
+
+
+
+# Creating a confusion matrix (with assumption that we have a model prediction called as model_pred)
+conf_matrix <- table(test_set$loan_status, model_pred)
+
+# Compute classification accuracy
+(conf_matrix[1,1] + conf_matrix[2,2]) / (conf_matrix[1,2]+conf_matrix[2,1]+conf_matrix[1,1]+conf_matrix[2,2])
+
+# Compute sensitivity
+conf_matrix[2,2] / (conf_matrix[2,2]+conf_matrix[2,1])
+
+
+# Build a glm model with variable ir_cat as a predictor
+log_model_cat <- glm(loan_status ~ ir_cat, family ="binomial", data = training_set)
+
+
+# Print the parameter estimates 
+log_model_cat
+# Look at the different categories in ir_cat using table()
+table(loan_data$ir_cat)
+
+
+# Build the logistic regression model
+log_model_multi <- glm(loan_status ~ age + ir_cat + grade + loan_amnt + annual_inc, family = "binomial", data=training_set)
+
+
+# Obtain significance levels using summary()
+summary(log_model_multi)
+
+# Build the logistic regression model
+predictions_all_small <- predict(log_model_small, newdata = test_set, type = "response")
+
+# Look at the range of the object "predictions_all_small"
+range(predictions_all_small)
+
+# Build the logistic regression model
+log_model_full <- glm(loan_status ~ ., family = "binomial", data = training_set)
+
+# Make PD-predictions for all test set elements using the the full logistic regression model
+predictions_all_full <- predict(log_model_full, newdata = test_set, type = "response")
+
+# Look at the predictions range
+range(predictions_all_full)
+
+# The code for the logistic regression model and the predictions is given below
+log_model_full <- glm(loan_status ~ ., family = "binomial", data = training_set)
+predictions_all_full <- predict(log_model_full, newdata = test_set, type = "response")
+
+# Make a binary predictions-vector using a cut-off of 15%
+pred_cutoff_15 <- ifelse(predictions_all_full>0.15,1,0)
+
+# Construct a confusion matrix
+table(test_set$loan_status, pred_cutoff_15)
+
+#confusion matirx with the cut-off 20%
+pred_cutoff_20 <- ifelse(predictions_all_full>0.2, 1, 0)
+
+table(test_set$loan_status, pred_cutoff_20)
+
+# Fit the logit, probit and cloglog-link logistic regression models
+log_model_logit <- glm(loan_status ~ age + emp_cat + ir_cat + loan_amnt,
+                       family = binomial(link = logit), data = training_set)
+log_model_probit <- glm(loan_status ~ age + emp_cat + ir_cat + loan_amnt,
+                        family = binomial(link = probit), data = training_set)
+
+log_model_cloglog <- glm(loan_status ~ age + emp_cat + ir_cat + loan_amnt,
+                         family = binomial(link = cloglog), data = training_set)
+
+# Make predictions for all models using the test set
+predictions_logit <- predict(log_model_logit, newdata = test_set, type = "response")
+predictions_probit <- predict(log_model_probit, newdata = test_set, type = "response")
+predictions_cloglog <- predict(log_model_cloglog, newdata = test_set, type = "response")
+
+# Use a cut-off of 14% to make binary predictions-vectors
+cutoff <- 0.14
+class_pred_logit <- ifelse(predictions_logit > cutoff, 1, 0)
+class_pred_probit <- ifelse(predictions_probit > cutoff, 1, 0)
+class_pred_cloglog <- ifelse(predictions_cloglog > cutoff, 1, 0)
+
+# Make a confusion matrix for the three models
+tab_class_logit <- table(true_val,class_pred_logit)
+tab_class_probit <- table(true_val,class_pred_probit)
+tab_class_cloglog <- table(true_val,class_pred_cloglog)
+
+# Compute the classification accuracy for all three models
+acc_logit <- sum(diag(tab_class_logit)) / nrow(test_set)
+acc_probit <- sum(diag(tab_class_probit)) / nrow(test_set)
+acc_cloglog <- sum(diag(tab_class_cloglog)) / nrow(test_set)
+
