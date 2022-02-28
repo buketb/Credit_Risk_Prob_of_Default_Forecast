@@ -154,8 +154,8 @@ plot(loan_data$ir_cat)
 #specifity
 
 
-# Set seed of 567
-set.seed(567)
+
+set.seed(1234)
 
 # Store row numbers for training set: index_train
 index_train <- sample(1:nrow(loan_data), 2 / 3 * nrow(loan_data))
